@@ -1,18 +1,12 @@
-import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
-  ConnectedSocket,
-} from '@nestjs/websockets';
+import { WebSocketGateway, WebSocketServer, SubscribeMessage, ConnectedSocket } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Inject, Injectable } from '@nestjs/common';
-import { UserType } from '../common/types/user.type';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ChatRepository } from '../db-prisma/repositories/chat.repository';
 
 @Injectable()
-@WebSocketGateway(8080, { cors: true })
+@WebSocketGateway(8089, { cors: true })
 export class ChatGateway {
   @WebSocketServer()
   server: Server;
@@ -24,19 +18,26 @@ export class ChatGateway {
 
   @SubscribeMessage('connect')
   async handleConnection(@ConnectedSocket() client: Socket) {
-    client.on('user', async (user: UserType) => {
+    client.on('getUser', async (user) => {
+      console.log('user: ', user);
       try {
-        const branchExists = await this.chatRepository.branchExists(
-          user.branch_name,
-        );
+        const groupName = user.branch_name + '-' + user.section_name;
+        const branchExists = await this.chatRepository.branchExists(groupName);
+        const userData = {
+          userId: user.id,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          branch: user.branch_name,
+          section: user.section_name,
+        };
+        const createUser = await this.chatRepository.createUser(userData);
         if (branchExists) {
-          client.join(user.branch_name);
-          await this.cacheManager.set(
-            user.branch_name,
-            JSON.stringify({ user, client }),
-          );
-          const usersInGroup = await this.cacheManager.get(user.branch_name);
-          this.server.to(user.branch_name).emit('userJoin', usersInGroup);
+          client.join(groupName);
+          // await this.cacheManager.set(user.branch_name, JSON.stringify({ user, client }));
+          // const usersInGroup = await this.cacheManager.get(user.branch_name);
+          const users = await this.chatRepository.usersInGroup(user.branch_name, user.section_name);
+          console.log('users: ', users);
+          this.server.to(groupName).emit('userJoin', users);
         }
       } catch (error) {
         console.error('Error handling connection:', error);

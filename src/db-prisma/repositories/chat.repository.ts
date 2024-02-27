@@ -6,27 +6,31 @@ import { User } from '@prisma/client';
 export class ChatRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async branchExists(branchName: string): Promise<boolean> {
-    const count = await this.prisma.group.count({
+  async branchExists(groupName: string) {
+    const group = await this.prisma.group.findFirst({
       where: {
-        branch: branchName,
+        name: groupName,
       },
     });
-    return count > 0;
+    return group;
   }
 
   async createUser(user: any): Promise<User | null> {
     try {
+      const userExists = await this.prisma.user.findUnique({ where: { userId: user.userId } });
+      if (userExists) return null;
       const createdUser = await this.prisma.user.create({
-        data: {
-          id: user.id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          branch: user.branch,
-          section: user.section,
-          isBan: false,
-        },
+        // data: {
+        //   id: user.id,
+        //   firstName: user.firstName,
+        //   lastName: user.lastName,
+        //   branch: user.branch,
+        //   section: user.section,
+        //   isBan: false,
+        // },
+        data: { ...user },
       });
+      console.log(createdUser);
       return createdUser;
     } catch (error) {
       console.error('Error creating user:', error);
@@ -36,7 +40,7 @@ export class ChatRepository {
 
   async addUserToGroup(userId: string, groupName: string) {
     const group = await this.prisma.group.findFirst({
-      where: { branch: groupName },
+      where: { name: groupName },
     });
 
     if (!group) {
@@ -49,5 +53,14 @@ export class ChatRepository {
         group: { connect: { id: group.id } },
       },
     });
+  }
+
+  async usersInGroup(branch, section) {
+    const users = await this.prisma.group.findFirst({
+      where: { branch, section },
+      include: { users: true },
+    });
+    // console.log('------------', users.users[0]);
+    return users;
   }
 }
