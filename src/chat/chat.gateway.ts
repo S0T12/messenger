@@ -32,14 +32,21 @@ export class ChatGateway {
             newUser.id,
             user.branch_name,
           );
-          if (newUser && addUserToGroup) client.join(user.branch_name);
+          if (newUser && addUserToGroup) {
+            client.join(user.branch_name);
+            client.to(user.branch_name).emit('userJoin', {
+              userId: user.id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+            });
+          }
         }
 
-        const usersInGroup = await this.chatRepository.usersInGroup(
-          user.branch_name,
-        );
+        // const usersInGroup = await this.chatRepository.usersInGroup(
+        //   user.branch_name,
+        // );
 
-        client.to(user.branch_name).emit('usersInGroup', usersInGroup);
+        // client.to(user.branch_name).emit('usersInGroup', usersInGroup);
       } catch (error) {
         console.error('Error handling connection:', error);
       }

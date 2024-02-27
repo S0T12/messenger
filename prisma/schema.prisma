@@ -15,7 +15,7 @@ datasource db {
 
 model Group {
   id String @id @default(auto()) @map("_id") @db.ObjectId
-  groupName String
+  name String
   branch String
   section String
   users UsersInGroups[]
@@ -41,12 +41,3 @@ model User {
   groups UsersInGroups[]
 }
 
-model Branch {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  name String
-}
-
-model Section {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  name String
-}
