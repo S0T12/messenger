@@ -1,51 +1,64 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { Group } from '@prisma/client';
+import { User } from '@prisma/client';
 
 @Injectable()
 export class ChatRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async branchExists(groupName: string): Promise<boolean> {
+  async branchExists(branchName: string): Promise<boolean> {
     const count = await this.prisma.group.count({
       where: {
-        name: groupName,
+        branch: branchName,
       },
     });
     return count > 0;
   }
 
-  async findUser(userId) {
-    return await this.prisma.user.findFirst({ where: { userId } });
+  async findUser(userId: string): Promise<User | null> {
+    return await this.prisma.user.findUnique({ where: { userId } });
   }
 
-  async createUser(user) {
-    return await this.prisma.user.createMany({
-      data: { ...user },
-    });
+  async createUser(user: Partial<User>): Promise<User> {
+    return await this.prisma.user.create({ data: user as User });
   }
 
-  async userExistsInGroup(mongoId: string, groupId) {
+  async userExistsInGroup(userId: string, groupId: string): Promise<boolean> {
     const userExistsInGroup = await this.prisma.usersInGroups.findFirst({
-      where: { group_id: groupId, user_id: mongoId },
+      where: { user_id: userId, group_id: groupId },
     });
-    return userExistsInGroup;
+    return userExistsInGroup !== null;
   }
 
-  async addUserToGroup(userId: string, groupName: string, mongoId: string): Promise<void> {
+  async createGroup(groupName: string): Promise<void> {
+    await this.prisma.group.create({
+      data: {
+        name: groupName,
+        branch: groupName.split('-')[0],
+        section: groupName.split('-')[1],
+      },
+    });
+  }
+
+  async getGroupIdByName(groupName: string): Promise<string | null> {
+    const group = await this.prisma.group.findFirst({
+      where: { name: groupName },
+      select: { id: true },
+    });
+    return group?.id || null;
+  }
+
+  async addUserToGroup(
+    userId: string,
+    groupName: string,
+    mongoId: string,
+    groupId: string,
+  ): Promise<void> {
     try {
-      const group = await this.prisma.group.findFirst({
-        where: { name: groupName },
-      });
-
-      if (!group) {
-        throw new Error(`Group "${groupName}" not found`);
-      }
-
       await this.prisma.usersInGroups.create({
         data: {
-          group: { connect: { id: group.id } },
-          user: { connect: { id: mongoId } },
+          group_id: groupId,
+          user_id: mongoId,
         },
       });
       console.log(`User with ID ${userId} added to group "${groupName}".`);
@@ -55,12 +68,13 @@ export class ChatRepository {
     }
   }
 
-  async getUsersInGroup(branch: string, section: string): Promise<Group | null> {
+  async getUsersInGroup(groupId: string): Promise<User[] | null> {
     try {
-      return await this.prisma.group.findFirst({
-        where: { branch, section },
+      const group = await this.prisma.group.findFirst({
+        where: { id: groupId },
         include: { users: { include: { user: true } } },
       });
+      return group?.users.map((usersInGroup) => usersInGroup.user) || null;
     } catch (error) {
       console.error('Error fetching users in group:', error);
       return null;

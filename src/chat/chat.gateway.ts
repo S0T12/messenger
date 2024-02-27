@@ -1,4 +1,9 @@
-import { WebSocketGateway, WebSocketServer, SubscribeMessage, ConnectedSocket } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  SubscribeMessage,
+  ConnectedSocket,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Inject, Injectable } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -22,26 +27,50 @@ export class ChatGateway {
 
     client.on('getUser', async (user) => {
       try {
-        const groupName = user.branch_name + '-' + user.section_name;
-        const groupExists = await this.chatRepository.branchExists(groupName);
+        const groupName = user.branch + '-' + user.section;
+        let groupExists = await this.chatRepository.branchExists(groupName);
+
+        if (!groupExists) {
+          // If group doesn't exist, create it
+          await this.chatRepository.createGroup(groupName);
+          groupExists = true;
+        }
 
         const userData = {
           userId: user.id.toString(),
-          firstName: user.first_name,
-          lastName: user.last_name,
-          branch: user.branch_name,
-          section: user.section_name,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          branch: user.branch,
+          section: user.section,
+          isBan: false,
         };
         const savedUser = await this.chatRepository.createUser(userData);
 
-        if (groupExists) {
-          const result = await this.chatRepository.addUserToGroup(user.id.toString(), groupName, savedUser.id);
-          console.log('result', result);
+        const groupId = await this.chatRepository.getGroupIdByName(groupName);
+        const userExistsInGroup = await this.chatRepository.userExistsInGroup(
+          savedUser.id,
+          groupId,
+        );
+
+        if (!userExistsInGroup) {
+          // If user is not in group, add them
+          await this.chatRepository.addUserToGroup(
+            user.id.toString(),
+            groupName,
+            savedUser.id,
+            groupId,
+          );
 
           client.join(groupName);
 
-          const usersInGroups = await this.chatRepository.getUsersInGroup(user.branch_name, user.section_name);
-          this.server.to(groupName).emit('userJoin', usersInGroups[0].users[0].user);
+          // Store user in group data in cache
+          await this.cacheManager.set(groupName, savedUser);
+
+          // Get user in group in cache
+          const userList = await this.cacheManager.get(groupName);
+
+          // Emit user object to clients in the group
+          this.server.to(groupName).emit('userJoin', userList);
         }
       } catch (error) {
         console.error('Error handling connection:', error);
