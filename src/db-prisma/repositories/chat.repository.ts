@@ -1,4 +1,3 @@
-// chat.repository.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { User } from '@prisma/client';
@@ -23,7 +22,7 @@ export class ChatRepository {
       });
       if (userExists) {
         console.log(`User with ID ${user.userId} already exists.`);
-        return null;
+        return userExists;
       }
 
       const createdUser = await this.prisma.user.create({
@@ -37,7 +36,7 @@ export class ChatRepository {
     }
   }
 
-  async addUserToGroup(userId: string, groupName: string): Promise<void> {
+  async addUserToGroup(userId: string, groupName, mongoId): Promise<void> {
     try {
       const group = await this.prisma.group.findFirst({
         where: { name: groupName },
@@ -47,25 +46,20 @@ export class ChatRepository {
         throw new Error(`Branch "${groupName}" not found`);
       }
 
-      const userExistsInGroup = await this.prisma.group.count({
-        where: {
-          AND: [{ id: group.id }, { userIds: { has: userId } }],
-        },
+      const userExistsInGroup = await this.prisma.usersInGroups.findFirst({
+        where: { group_id: group.id, user_id: userId },
       });
 
-      if (userExistsInGroup > 0) {
+      if (userExistsInGroup) {
         console.log(`User with ID ${userId} already exists in the group.`);
         return;
       }
 
       await this.prisma.group.update({
-        where: { id: group.id },
+        where: { id: group.id.toString() },
         data: {
           users: {
-            connect: { id: userId },
-          },
-          userIds: {
-            set: [userId, ...group.userIds],
+            connect: { id: mongoId },
           },
         },
       });
@@ -76,19 +70,12 @@ export class ChatRepository {
     }
   }
 
-  async usersInGroup(branch: string, section: string): Promise<User[]> {
+  async usersInGroup(branch: string, section: string) {
     const group = await this.prisma.group.findFirst({
       where: { branch, section },
       include: { users: true },
     });
 
-    const users =
-      group?.userIds?.length > 0
-        ? await this.prisma.user.findMany({
-            where: { id: { in: group?.userIds } },
-          })
-        : [];
-
-    return users;
+    return group;
   }
 }
