@@ -17,17 +17,19 @@ export class ChatGateway {
   server: Server;
 
   constructor(
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly chatRepository: ChatRepository,
   ) {}
 
   @SubscribeMessage('connect')
   async handleConnection(@ConnectedSocket() client: Socket) {
+    console.log(`Client connected: ${client.id}`);
+
     client.on('getUser', async (user) => {
-      console.log('user: ', user);
       try {
         const groupName = user.branch_name + '-' + user.section_name;
         const branchExists = await this.chatRepository.branchExists(groupName);
+
         const userData = {
           userId: user.id,
           firstName: user.first_name,
@@ -35,24 +37,27 @@ export class ChatGateway {
           branch: user.branch_name,
           section: user.section_name,
         };
-        const createUser = await this.chatRepository.createUser(userData);
+        const savedUser = await this.chatRepository.createUser(userData);
+
         if (branchExists) {
           client.join(groupName);
-          // await this.cacheManager.set(user.branch_name, JSON.stringify({ user, client }));
-          // const usersInGroup = await this.cacheManager.get(user.branch_name);
+
+          // Fetch and broadcast users in the group
           const users = await this.chatRepository.usersInGroup(
             user.branch_name,
             user.section_name,
           );
-          console.log('users: ', users);
           this.server.to(groupName).emit('userJoin', users);
         }
       } catch (error) {
         console.error('Error handling connection:', error);
+        try {
+          client.emit('error', 'Failed to connect to chat');
+        } catch (error) {
+          console.error('Failed to send error message to client:', error);
+        }
       }
     });
-
-    console.log(`Client connected: ${client.id}`);
   }
 
   @SubscribeMessage('disconnect')
@@ -62,6 +67,6 @@ export class ChatGateway {
 
   @SubscribeMessage('message')
   async handleMessage(@ConnectedSocket() client: Socket, message) {
-    client.emit(message);
+    this.server.emit(message);
   }
 }
