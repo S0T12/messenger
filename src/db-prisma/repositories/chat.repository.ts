@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { User } from '@prisma/client';
+import { User, Group } from '@prisma/client';
 
 @Injectable()
 export class ChatRepository {
@@ -15,7 +15,7 @@ export class ChatRepository {
     return count > 0;
   }
 
-  async createUser(user: any): Promise<User | null> {
+  async createUser(user): Promise<User | null> {
     try {
       const userExists = await this.prisma.user.findUnique({
         where: { userId: user.userId },
@@ -26,7 +26,7 @@ export class ChatRepository {
       }
 
       const createdUser = await this.prisma.user.create({
-        data: user,
+        data: { ...user },
       });
       console.log(`User created:`, createdUser);
       return createdUser;
@@ -36,14 +36,18 @@ export class ChatRepository {
     }
   }
 
-  async addUserToGroup(userId: string, groupName, mongoId): Promise<void> {
+  async addUserToGroup(
+    userId: string,
+    groupName: string,
+    mongoId: string,
+  ): Promise<void> {
     try {
       const group = await this.prisma.group.findFirst({
         where: { name: groupName },
       });
 
       if (!group) {
-        throw new Error(`Branch "${groupName}" not found`);
+        throw new Error(`Group "${groupName}" not found`);
       }
 
       const userExistsInGroup = await this.prisma.usersInGroups.findFirst({
@@ -55,12 +59,10 @@ export class ChatRepository {
         return;
       }
 
-      await this.prisma.group.update({
-        where: { id: group.id.toString() },
+      await this.prisma.usersInGroups.create({
         data: {
-          users: {
-            connect: { id: mongoId },
-          },
+          group: { connect: { id: group.id } },
+          user: { connect: { id: mongoId } },
         },
       });
       console.log(`User with ID ${userId} added to group "${groupName}".`);
@@ -70,12 +72,18 @@ export class ChatRepository {
     }
   }
 
-  async usersInGroup(branch: string, section: string) {
-    const group = await this.prisma.group.findFirst({
-      where: { branch, section },
-      include: { users: true },
-    });
-
-    return group;
+  async getUsersInGroup(
+    branch: string,
+    section: string,
+  ): Promise<Group | null> {
+    try {
+      return await this.prisma.group.findFirst({
+        where: { branch, section },
+        include: { users: true },
+      });
+    } catch (error) {
+      console.error('Error fetching users in group:', error);
+      return null;
+    }
   }
 }
