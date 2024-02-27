@@ -33,7 +33,7 @@ model UsersInGroups {
 
 model User {
   id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId Int @unique()
+  userId String @unique()
   firstName String
   lastName String
   branch String
