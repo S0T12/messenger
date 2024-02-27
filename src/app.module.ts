@@ -3,7 +3,7 @@ import { ChatModule } from './chat/chat.module';
 import { PrismaModule } from './db-prisma/prisma.module';
 
 @Module({
-  imports: [ChatModule],
+  imports: [PrismaModule, ChatModule],
   controllers: [],
   providers: [],
 })
