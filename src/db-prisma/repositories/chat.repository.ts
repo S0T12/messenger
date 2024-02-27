@@ -1,3 +1,4 @@
+// chat.repository.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { User } from '@prisma/client';
@@ -6,31 +7,29 @@ import { User } from '@prisma/client';
 export class ChatRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async branchExists(groupName: string) {
-    const group = await this.prisma.group.findFirst({
+  async branchExists(branchName: string): Promise<boolean> {
+    const count = await this.prisma.group.count({
       where: {
-        name: groupName,
+        branch: branchName,
       },
     });
-    return group;
+    return count > 0;
   }
 
   async createUser(user: any): Promise<User | null> {
     try {
-      const userExists = await this.prisma.user.findUnique({ where: { userId: user.userId } });
-      if (userExists) return null;
-      const createdUser = await this.prisma.user.create({
-        // data: {
-        //   id: user.id,
-        //   firstName: user.firstName,
-        //   lastName: user.lastName,
-        //   branch: user.branch,
-        //   section: user.section,
-        //   isBan: false,
-        // },
-        data: { ...user },
+      const userExists = await this.prisma.user.findUnique({
+        where: { userId: user.userId },
       });
-      console.log(createdUser);
+      if (userExists) {
+        console.log(`User with ID ${user.userId} already exists.`);
+        return null;
+      }
+
+      const createdUser = await this.prisma.user.create({
+        data: user,
+      });
+      console.log(`User created:`, createdUser);
       return createdUser;
     } catch (error) {
       console.error('Error creating user:', error);
@@ -38,29 +37,51 @@ export class ChatRepository {
     }
   }
 
-  async addUserToGroup(userId: string, groupName: string) {
-    const group = await this.prisma.group.findFirst({
-      where: { name: groupName },
-    });
+  async addUserToGroup(userId: string, groupName: string): Promise<void> {
+    try {
+      const group = await this.prisma.group.findFirst({
+        where: { name: groupName },
+      });
 
-    if (!group) {
-      throw new Error(`Branch "${groupName}" not found`);
+      if (!group) {
+        throw new Error(`Branch "${groupName}" not found`);
+      }
+
+      const userExistsInGroup = await this.prisma.group.count({
+        where: {
+          AND: [{ id: group.id }, { userIds: { has: userId } }],
+        },
+      });
+
+      if (userExistsInGroup > 0) {
+        console.log(`User with ID ${userId} already exists in the group.`);
+        return;
+      }
+
+      await this.prisma.group.update({
+        where: { id: group.id },
+        data: {
+          users: {
+            connect: { id: userId },
+          },
+          userIds: {
+            set: [userId, ...group.userIds],
+          },
+        },
+      });
+      console.log(`User with ID ${userId} added to group "${groupName}".`);
+    } catch (error) {
+      console.error('Error adding user to group:', error);
+      throw error;
     }
-
-    return await this.prisma.usersInGroups.create({
-      data: {
-        user: { connect: { id: userId } },
-        group: { connect: { id: group.id } },
-      },
-    });
   }
 
-  async usersInGroup(branch, section) {
+  async usersInGroup(branch: string, section: string) {
     const users = await this.prisma.group.findFirst({
       where: { branch, section },
       include: { users: true },
     });
-    // console.log('------------', users.users[0]);
-    return users;
+
+    return users?.users || [];
   }
 }

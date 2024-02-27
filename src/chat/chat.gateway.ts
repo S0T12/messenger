@@ -1,4 +1,9 @@
-import { WebSocketGateway, WebSocketServer, SubscribeMessage, ConnectedSocket } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  SubscribeMessage,
+  ConnectedSocket,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Inject, Injectable } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -35,7 +40,10 @@ export class ChatGateway {
           client.join(groupName);
           // await this.cacheManager.set(user.branch_name, JSON.stringify({ user, client }));
           // const usersInGroup = await this.cacheManager.get(user.branch_name);
-          const users = await this.chatRepository.usersInGroup(user.branch_name, user.section_name);
+          const users = await this.chatRepository.usersInGroup(
+            user.branch_name,
+            user.section_name,
+          );
           console.log('users: ', users);
           this.server.to(groupName).emit('userJoin', users);
         }
