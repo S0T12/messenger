@@ -7,12 +7,12 @@ export class ChatRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async branchExists(branchName: string): Promise<boolean> {
-    const branch = await this.prisma.branch.findFirst({
+    const count = await this.prisma.group.count({
       where: {
-        name: branchName,
+        branch: branchName,
       },
     });
-    return !!branch;
+    return count > 0;
   }
 
   async createUser(user: any): Promise<User | null> {
@@ -32,12 +32,6 @@ export class ChatRepository {
       console.error('Error creating user:', error);
       return null;
     }
-  }
-
-  async usersInGroup(groupName) {
-    return await this.prisma.usersInGroups.findMany({
-      where: { group: groupName },
-    });
   }
 
   async addUserToGroup(userId: string, groupName: string) {
