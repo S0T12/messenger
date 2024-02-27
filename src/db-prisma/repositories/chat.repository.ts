@@ -76,12 +76,19 @@ export class ChatRepository {
     }
   }
 
-  async usersInGroup(branch: string, section: string) {
-    const users = await this.prisma.group.findFirst({
+  async usersInGroup(branch: string, section: string): Promise<User[]> {
+    const group = await this.prisma.group.findFirst({
       where: { branch, section },
       include: { users: true },
     });
 
-    return users?.users || [];
+    const users =
+      group?.userIds?.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: group?.userIds } },
+          })
+        : [];
+
+    return users;
   }
 }
