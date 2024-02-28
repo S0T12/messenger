@@ -6,13 +6,17 @@ import { User } from '@prisma/client';
 export class ChatRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async branchExists(branchName: string): Promise<boolean> {
-    const count = await this.prisma.group.count({
+  async findAllUsers() {
+    return await this.prisma.user.findMany();
+  }
+
+  async groupExists(groupName: string) {
+    const group = await this.prisma.group.findFirst({
       where: {
-        branch: branchName,
+        name: groupName,
       },
     });
-    return count > 0;
+    return group;
   }
 
   async findUser(userId: string): Promise<User | null> {
@@ -20,7 +24,16 @@ export class ChatRepository {
   }
 
   async createUser(user: Partial<User>): Promise<User> {
-    return await this.prisma.user.create({ data: user as User });
+    return await this.prisma.user.create({
+      data: {
+        userId: user.userId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        branch: user.branch,
+        section: user.section,
+        isBan: user.isBan,
+      },
+    });
   }
 
   async userExistsInGroup(userId: string, groupId: string): Promise<boolean> {
@@ -30,8 +43,8 @@ export class ChatRepository {
     return userExistsInGroup !== null;
   }
 
-  async createGroup(groupName: string): Promise<void> {
-    await this.prisma.group.create({
+  async createGroup(groupName: string) {
+    return await this.prisma.group.create({
       data: {
         name: groupName,
         branch: groupName.split('-')[0],
@@ -40,20 +53,7 @@ export class ChatRepository {
     });
   }
 
-  async getGroupIdByName(groupName: string): Promise<string | null> {
-    const group = await this.prisma.group.findFirst({
-      where: { name: groupName },
-      select: { id: true },
-    });
-    return group?.id || null;
-  }
-
-  async addUserToGroup(
-    userId: string,
-    groupName: string,
-    mongoId: string,
-    groupId: string,
-  ): Promise<void> {
+  async addUserToGroup(userId: string, groupName: string, mongoId: string, groupId: string): Promise<void> {
     try {
       await this.prisma.usersInGroups.create({
         data: {

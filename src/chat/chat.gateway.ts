@@ -27,51 +27,82 @@ export class ChatGateway {
 
     client.on('getUser', async (user) => {
       try {
+        console.log('USER: ', user);
         const groupName = user.branch + '-' + user.section;
-        let groupExists = await this.chatRepository.branchExists(groupName);
+        let groupExists = await this.chatRepository.groupExists(groupName);
 
         if (!groupExists) {
           // If group doesn't exist, create it
-          await this.chatRepository.createGroup(groupName);
-          groupExists = true;
+          groupExists = await this.chatRepository.createGroup(groupName);
         }
 
-        const userData = {
+        const userDataCache = {
           userId: user.id.toString(),
           firstName: user.firstName,
           lastName: user.lastName,
           branch: user.branch,
           section: user.section,
+          socketId: client.id,
           isBan: false,
         };
-        const savedUser = await this.chatRepository.createUser(userData);
+        type userDataCacheType = {
+          userId: string;
+          firstName: string;
+          lastName: string;
+          branch: string;
+          section: string;
+          socketId: string;
+          isBan: boolean;
+        };
 
-        const groupId = await this.chatRepository.getGroupIdByName(groupName);
-        const userExistsInGroup = await this.chatRepository.userExistsInGroup(
-          savedUser.id,
-          groupId,
+        let userExixsts = await this.chatRepository.findUser(
+          user.id.toString(),
         );
+        const { socketId, ...userData } = userDataCache;
+        if (!userExixsts) {
+          userExixsts = await this.chatRepository.createUser(userData);
+        }
+        const groupInCache: Array<userDataCacheType> =
+          await this.cacheManager.get(groupName);
+        if (!groupInCache) {
+          await this.cacheManager.set(groupName, [userDataCache], 86400000);
+        } else {
+          const users = [...groupInCache];
+          console.log('users: ', users);
+          const index = users.findIndex(
+            (u) => u.userId === userDataCache.userId,
+          );
+          console.log(index);
+          if (index != -1) {
+            const newUsers = users.splice(index, 1);
+            console.log('newUsersssssssss', users);
+          }
+          await this.cacheManager.set(groupName, [...users]);
+          users.push(userDataCache);
+          await this.cacheManager.set(groupName, [...users], 86400000);
+        }
+
+        const userExistsInGroup = await this.chatRepository.userExistsInGroup(
+          userExixsts.id,
+          groupExists.id,
+        );
+        console.log('userExistsInGroup: ', userExistsInGroup);
 
         if (!userExistsInGroup) {
-          // If user is not in group, add them
+          // If user is not in group, add that
           await this.chatRepository.addUserToGroup(
             user.id.toString(),
             groupName,
-            savedUser.id,
-            groupId,
+            userExixsts.id,
+            groupExists.id,
           );
-
-          client.join(groupName);
-
-          // Store user in group data in cache
-          await this.cacheManager.set(groupName, savedUser);
-
-          // Get user in group in cache
-          const userList = await this.cacheManager.get(groupName);
-
-          // Emit user object to clients in the group
-          this.server.to(groupName).emit('userJoin', userList);
         }
+
+        client.join(groupName);
+
+        const userList = await this.cacheManager.get(groupName);
+
+        this.server.to(groupName).emit('userList', userList);
       } catch (error) {
         console.error('Error handling connection:', error);
         try {
@@ -81,15 +112,58 @@ export class ChatGateway {
         }
       }
     });
-  }
 
-  @SubscribeMessage('disconnect')
-  async handleDisconnect(@ConnectedSocket() client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
-  }
+    client.on('dis', async (user) => {
+      // console.log('user: ', user);
+      console.log('userDisconnect');
+      const groupName = user.branch + '-' + user.section;
+      console.log('groupNameeeeeeee', groupName);
 
-  @SubscribeMessage('message')
-  async handleMessage(@ConnectedSocket() client: Socket, message) {
-    this.server.emit(message);
+      const userDataCache = {
+        userId: user.id.toString(),
+        firstName: user.firstName,
+        lastName: user.lastName,
+        branch: user.branch,
+        section: user.section,
+        socketId: user.socketId,
+        isBan: false,
+      };
+      type userDataCacheType = {
+        userId: string;
+        firstName: string;
+        lastName: string;
+        branch: string;
+        section: string;
+        socketId: string;
+        isBan: boolean;
+      };
+
+      const groupInCache: Array<userDataCacheType> =
+        await this.cacheManager.get(groupName);
+      console.log('groupInCache: ,,,,,,,,', groupInCache);
+      if (groupInCache) {
+        const users = [...groupInCache];
+        console.log(users);
+        const index = users.findIndex((u) => u.userId === userDataCache.userId);
+        console.log(index);
+        if (index != -1) {
+          const newUsers = users.splice(index, 1);
+          console.log('newUsersssssssss', users);
+        } else {
+          console.log('user not connected');
+        }
+        await this.cacheManager.set(groupName, [...users]);
+      }
+      const userList = await this.cacheManager.get(groupName);
+      this.server.to(groupName).emit('userList', userList);
+      console.log(`Client disconnected: ${user.id}`);
+    });
+
+    client.on('privateMessage', (payload: { socketId; message }) => {
+      console.log('here is privateMessage');
+      console.log(payload);
+
+      this.server.to(payload.socketId).emit('privateMessage', payload.message);
+    });
   }
 }
