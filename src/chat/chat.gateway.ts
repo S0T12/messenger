@@ -114,10 +114,8 @@ export class ChatGateway {
     });
 
     client.on('dis', async (user) => {
-      // console.log('user: ', user);
       console.log('userDisconnect');
       const groupName = user.branch + '-' + user.section;
-      console.log('groupNameeeeeeee', groupName);
 
       const userDataCache = {
         userId: user.id.toString(),
@@ -140,7 +138,6 @@ export class ChatGateway {
 
       const groupInCache: Array<userDataCacheType> =
         await this.cacheManager.get(groupName);
-      console.log('groupInCache: ,,,,,,,,', groupInCache);
       if (groupInCache) {
         const users = [...groupInCache];
         console.log(users);
@@ -148,7 +145,6 @@ export class ChatGateway {
         console.log(index);
         if (index != -1) {
           const newUsers = users.splice(index, 1);
-          console.log('newUsersssssssss', users);
         } else {
           console.log('user not connected');
         }
