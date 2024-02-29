@@ -5,7 +5,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { ChatRepository } from '../db-prisma/repositories/chat.repository';
@@ -16,6 +16,8 @@ export class ChatGateway {
   @WebSocketServer()
   server: Server;
 
+  private readonly logger = new Logger(ChatGateway.name);
+
   constructor(
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly chatRepository: ChatRepository,
@@ -23,17 +25,17 @@ export class ChatGateway {
 
   @SubscribeMessage('connect')
   async handleConnection(@ConnectedSocket() client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+    this.logger.log(`Client connected: ${client.id}`);
 
     client.on('getUser', async (user) => {
-      console.log('Here is getUser');
+      this.logger.debug('Received getUser event');
       try {
-        console.log('USER: ', user);
+        this.logger.debug('Received user data:', user);
         const groupName = user.branch + '-' + user.section;
         let groupExists = await this.chatRepository.groupExists(groupName);
 
         if (!groupExists) {
-          // If group doesn't exist, create it
+          this.logger.debug(`Group ${groupName} does not exist, creating...`);
           groupExists = await this.chatRepository.createGroup(groupName);
         }
 
@@ -56,45 +58,48 @@ export class ChatGateway {
           isBan: boolean;
         };
 
-        let userExixsts = await this.chatRepository.findUser(
-          user.id.toString(),
-        );
+        let userExists = await this.chatRepository.findUser(user.id.toString());
         const { socketId, ...userData } = userDataCache;
-        if (!userExixsts) {
-          userExixsts = await this.chatRepository.createUser(userData);
+        if (!userExists) {
+          userExists = await this.chatRepository.createUser(userData);
+          this.logger.debug(`New user created: ${userExists.id}`);
         }
         const groupInCache: Array<userDataCacheType> =
           await this.cacheManager.get(groupName);
         if (!groupInCache) {
+          this.logger.debug(
+            `No cache found for group ${groupName}, creating...`,
+          );
           await this.cacheManager.set(groupName, [userDataCache], 86400000);
         } else {
+          this.logger.debug(`Cache found for group ${groupName}`);
           const users = [...groupInCache];
-          console.log('users: ', users);
           const index = users.findIndex(
             (u) => u.userId === userDataCache.userId,
           );
-          console.log(index);
           if (index != -1) {
             const newUsers = users.splice(index, 1);
-            console.log('newUsersssssssss', users);
+          } else {
+            this.logger.debug('User not connected before');
           }
           users.push(userDataCache);
           await this.cacheManager.set(groupName, [...users], 86400000);
         }
 
         const userExistsInGroup = await this.chatRepository.userExistsInGroup(
-          userExixsts.id,
+          userExists.id,
           groupExists.id,
         );
-        console.log('userExistsInGroup: ', userExistsInGroup);
 
         if (!userExistsInGroup) {
-          // If user is not in group, add that
           await this.chatRepository.addUserToGroup(
             user.id.toString(),
             groupName,
-            userExixsts.id,
+            userExists.id,
             groupExists.id,
+          );
+          this.logger.debug(
+            `Added user ${userExists.id} to group ${groupExists.id}`,
           );
         }
 
@@ -104,18 +109,21 @@ export class ChatGateway {
 
         this.server.to(groupName).emit('userList', userList);
       } catch (error) {
-        console.error('Error handling connection:', error);
+        this.logger.error('Error handling connection:', error.stack);
         try {
           client.emit('error', 'Failed to connect to chat');
         } catch (error) {
-          console.error('Failed to send error message to client:', error);
+          this.logger.error(
+            'Failed to send error message to client:',
+            error.stack,
+          );
         }
       }
     });
 
     client.on('dis', async (user) => {
-      console.log('userDisconnect');
-      const groupName = user.branch + '-' + user.section;
+      this.logger.log('User disconnected');
+      const groupName = `${user.branch}-${user.section}`;
 
       const userDataCache = {
         userId: user.id.toString(),
@@ -146,7 +154,7 @@ export class ChatGateway {
         if (index != -1) {
           const newUsers = users.splice(index, 1);
         } else {
-          console.log('user not connected');
+          this.logger.warn('User not connected');
         }
         await this.cacheManager.set(groupName, [...users]);
       }
@@ -157,13 +165,12 @@ export class ChatGateway {
         return;
       }
       this.server.to(groupName).emit('userList', userList);
-      console.log(`Client disconnected: ${user.id}`);
+      this.logger.log(`Client disconnected: ${user.id}`);
     });
 
     client.on('privateMessage', (payload: { socketId; message }) => {
-      console.log('here is privateMessage');
-      console.log(payload);
-
+      this.logger.debug('Received privateMessage event');
+      this.logger.debug('Payload:', payload);
       this.server.to(payload.socketId).emit('privateMessage', payload.message);
     });
   }
