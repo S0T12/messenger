@@ -26,6 +26,7 @@ export class ChatGateway {
     console.log(`Client connected: ${client.id}`);
 
     client.on('getUser', async (user) => {
+      console.log('Here is getUser');
       try {
         console.log('USER: ', user);
         const groupName = user.branch + '-' + user.section;
@@ -77,7 +78,6 @@ export class ChatGateway {
             const newUsers = users.splice(index, 1);
             console.log('newUsersssssssss', users);
           }
-          await this.cacheManager.set(groupName, [...users]);
           users.push(userDataCache);
           await this.cacheManager.set(groupName, [...users], 86400000);
         }
@@ -151,6 +151,11 @@ export class ChatGateway {
         await this.cacheManager.set(groupName, [...users]);
       }
       const userList = await this.cacheManager.get(groupName);
+
+      if (!userList) {
+        this.server.to(groupName).emit('userList', []);
+        return;
+      }
       this.server.to(groupName).emit('userList', userList);
       console.log(`Client disconnected: ${user.id}`);
     });
